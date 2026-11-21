@@ -1021,7 +1021,7 @@ onUnmounted(() => {
                 <span style="font-weight: bold; margin-top: 10px; display: block;">http解锁服务器</span>
                 <el-input
                   v-model="defaultHttpProxy"
-                  placeholder="例如: http://127.0.0.1:1080，留空则不使用"
+                  placeholder="例如 127.0.0.1:1080，留空则不使用"
                   @change="onHttpProxyChanged"
                   style="padding: 10px 50px 0 0" />
                 <div style="margin-top: 5px; display: flex; align-items: center; gap: 10px;">
