@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { Ref, onMounted, onUnmounted, ref, watch } from 'vue';
+import {
+  Ref,
+  defineAsyncComponent,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch
+} from 'vue';
 import { useRouter } from 'vue-router';
 import { useThrottleFn } from '@vueuse/core';
 
@@ -17,6 +24,10 @@ import PolarBearMode from './player/PolarBearMode.vue';
 import ColorfulMode from './player/ColorfulMode.vue';
 import { updateTheme } from '../utils/http';
 import { PlayDetailMode } from '../utils/type';
+
+const ParticleMode = defineAsyncComponent(
+  () => import('./player/ParticleMode.vue')
+);
 
 const { beforeResolve } = useRouter();
 const play = usePlayStore();
@@ -36,7 +47,11 @@ if (!popperEle) {
   popperEle.innerText = `:root{--music-slider-color-start: var(--music-button-background-hover);--music-slider-color-end: var(--music-background);}`;
   document.head.appendChild(popperEle);
 }
-const whiteThemeMode: Set<PlayDetailMode> = new Set(['polar-bear', 'colorful']);
+const whiteThemeMode: Set<PlayDetailMode> = new Set([
+  'polar-bear',
+  'colorful',
+  'particle'
+]);
 function setThemeColor() {
   if (whiteThemeMode.has(play.playerMode)) {
     imageThemeStyle.value = `--music-slider-color-start: #ffffff10;--music-slider-color-end: #ffffff80;--el-slider-full-background-color: #ffffff2e;--music-full-slider-color: #ffffff80`;
@@ -153,8 +168,10 @@ watch(() => play.playDetailShow, setTheme);
 <template>
   <el-drawer
     class="music-play-detail"
+    modal-class="music-play-detail-modal"
     v-model="play.playDetailShow"
     direction="btt"
+    destroy-on-close
     :with-header="false">
     <div
       class="music-play-detail-layout"
@@ -191,6 +208,9 @@ watch(() => play.playDetailShow, setTheme);
                 <el-dropdown-item @click="play.changePlayerMode('lyric')">
                   纯净模式
                 </el-dropdown-item>
+                <el-dropdown-item @click="play.changePlayerMode('particle')">
+                  粒子模式
+                </el-dropdown-item>
                 <el-dropdown-item @click="play.changePlayerMode('polar-bear')">
                   极地小熊
                 </el-dropdown-item>
@@ -205,10 +225,16 @@ watch(() => play.playDetailShow, setTheme);
       </div>
       <div
         class="music-play-detail-body"
-        :class="mouseStillness ? '' : 'music-play-detail-body-short'"
+        :class="[
+          mouseStillness ? '' : 'music-play-detail-body-short',
+          { 'music-play-detail-body-particle': play.playerMode === 'particle' }
+        ]"
         @mousemove="onMouseMove"
         @touchstart.stop="onTouchStart">
         <LyricMode v-if="play.playerMode == 'lyric'" />
+        <ParticleMode
+          v-else-if="play.playerMode == 'particle'"
+          :controls-visible="!mouseStillness" />
         <PolarBearMode
           :tools="!mouseStillness"
           v-else-if="play.playerMode == 'polar-bear'" />
@@ -236,6 +262,20 @@ watch(() => play.playDetailShow, setTheme);
   justify-content: space-between;
   --music-slider-color-start: rgba(92, 213, 229, 0);
   --music-slider-color-end: rgba(92, 213, 229, 1);
+
+  :deep(.particle-console-wrap.is-raised) {
+    bottom: unset;
+    top: 23px;
+    left: 130px;
+    right: unset;
+    .particle-console-fab {
+      border-radius: var(--music-border-radius);
+      border: 1px solid var(--music-button-info-border-color);
+      width: 35px;
+      height: 35px;
+      color: white;
+    }
+  }
 }
 
 .music-play-detail {
@@ -274,6 +314,12 @@ watch(() => play.playDetailShow, setTheme);
     height: calc(100% - 160px);
     width: 100%;
     position: relative;
+    &-particle {
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      height: 100%;
+    }
   }
   &-footer {
     z-index: 2;

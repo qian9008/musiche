@@ -2,8 +2,8 @@
 import BlurImage from './BlurImage.vue';
 import Jukebox from './Jukebox.vue';
 import Lyric from './Lyric.vue';
-import { usePlayStore } from '../../stores/play';
-const play = usePlayStore();
+import { usePlaybackController } from './playbackContext';
+const play = usePlaybackController();
 </script>
 <template>
   <div class="music-play-detail-default">
@@ -30,6 +30,7 @@ const play = usePlayStore();
   &-jukebox {
     height: 100%;
     width: 40vw;
+    max-width: 566px;
   }
 }
 

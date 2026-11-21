@@ -1,6 +1,7 @@
 @import './base.less';
 @import './element.less';
 @import './animal-island.less';
+@import './glass.less';
 
 @font-face {
   /*自定义字体名*/
@@ -18,7 +19,7 @@
   cursor: pointer;
 }
 button {
-  font-family: unset;
+  font-family: inherit !important;
 }
 .is-disabled .music-icon {
   cursor: not-allowed;
@@ -57,8 +58,8 @@ button .music-icon {
 .el-dialog,
 .el-message-box,
 .el-loading-mask {
-  backdrop-filter: blur(20px) !important;
   -webkit-backdrop-filter: blur(20px) !important;
+  backdrop-filter: blur(20px) !important;
   background-color: rgba(255, 255, 255, 0.75) !important;
   border: 0.5px solid rgba(0, 0, 0, 0.1) !important;
 }

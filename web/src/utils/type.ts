@@ -1,6 +1,11 @@
 export type MusicType = 'cloud' | 'qq' | 'migu' | 'local';
 
-export type PlayDetailMode = 'default' | 'lyric' | 'polar-bear' | 'colorful';
+export type PlayDetailMode =
+  | 'default'
+  | 'lyric'
+  | 'particle'
+  | 'polar-bear'
+  | 'colorful';
 
 export enum RankingType {
   Hot = 'hot',
@@ -53,6 +58,7 @@ export interface Music {
   url?: string;
   lyricUrl?: string;
   lyric?: string;
+  noRight?: boolean;
   audition?: boolean;
 }
 
@@ -60,8 +66,6 @@ export interface Playlist {
   id: string;
   name: string;
   image: string;
-  daily?: boolean;
-  dailyColor?: string;
   type: MusicType;
   description?: string;
   musicList?: Music[];
@@ -275,4 +279,10 @@ export interface PlatformAPI {
   setDownloadQuality?(quality: MusicQuality): void;
   setPlayQuality?(quality: MusicQuality): void;
   downloadUrl?(music: Music): Promise<string>;
+  subscribeCookieChanged?(
+    func: ((cookie: string | Record<string, string>) => void) | null
+  ): void;
+  refreshCookie?(
+    cookie: Record<string, string> | string
+  ): Promise<string | Record<string, string>>;
 }

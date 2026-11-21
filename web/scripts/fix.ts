@@ -58,11 +58,14 @@ function fixWorkerJS(): string {
 
 function transformIndexHtmlHandler(html: string) {
   const workerJS = fixWorkerJS();
-  html = html.replace(
-    '</head>',
-    `  <script>${workerJS}</script>
-  </head>`
-  );
+  const replaceList = [`  <script>${workerJS}</script>`];
+  if (process.env.ROUTER_PREFIX === 'musiche') {
+    replaceList.push(
+      `    <script src="/js/address.js?_t=${new Date().getTime()}"></script>`
+    );
+  }
+  replaceList.push('  </head>');
+  html = html.replace('</head>', replaceList.join('\n'));
   return html;
 }
 

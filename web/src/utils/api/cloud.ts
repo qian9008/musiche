@@ -18,11 +18,16 @@ import {
 import RankingHotImage from '../../assets/images/ranking-hot.jpg';
 import RankingNewImage from '../../assets/images/ranking-new.jpg';
 import RankingSoarImage from '../../assets/images/ranking-soar.jpg';
+import { src as cloudDaily } from '../../assets/images/cloud_daily';
 const QRCode = () => import('qrcode');
 
 const musicType: MusicType = 'cloud';
 
 var cloudCookie: Record<string, string> = {};
+
+export async function subscribeCookieChanged(
+  _func: (cookie: string | Record<string, string>) => void
+) {}
 
 var qrcodeGenerate: (text: string) => Promise<string> = async (
   text: string
@@ -165,6 +170,7 @@ function parseMusic(data: any): Music | null {
     albumId: album.id || '',
     duration: millisecond2Duration(data.dt || data.duration),
     length: data.dt || data.duration || 0,
+    noRight: Boolean(data.noCopyrightRcmd),
     vip: data.privilege && data.privilege.fee == 1,
     remark: '',
     type: musicType
@@ -272,10 +278,9 @@ export async function daily(): Promise<Playlist | null> {
     name: `每日推荐<br />${now.getFullYear()}-${
       now.getMonth() + 1
     }-${now.getDate()}`,
-    image:
-      'https://d1.music.126.net/dmusic/obj/w5zCg8OAw6HDjzjDgMK_/4157354271/5697/762a/99fb/dc1515a2dc6708fe40a5f3b36d987614.png',
-    daily: true,
-    dailyColor: 'rgb(249, 133, 102)',
+    image: `data:image/svg+xml;base64,${btoa(
+      cloudDaily.replace('{{day}}', now.getDate().toString())
+    )}`,
     type: musicType
   };
 }
@@ -377,6 +382,7 @@ export async function dailyPlayList(offset: number) {
 }
 
 export async function playlistDetail(id: string, offset: number) {
+  id = String(id);
   if (id == 'daily') {
     return dailyPlayList(offset);
   }
@@ -683,7 +689,7 @@ export async function deviceInfo(): Promise<{
   console.log('device info: ', ret);
   return null;
 }
-deviceInfo();
+
 function generateChainId(): string {
   const version = 'v1';
   const randomNum = Math.floor(Math.random() * 1e6);
@@ -759,4 +765,7 @@ export async function userInfo(
     name: ret.profile.nickname,
     image: (ret.profile.avatarUrl || '').replace('http://', 'https://')
   };
+}
+export function refreshCookie(cookies: string | Record<string, string>) {
+  return Promise.resolve(cookies);
 }

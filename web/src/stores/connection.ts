@@ -6,7 +6,7 @@ import { useSettingStore } from './setting';
 import { registerServiceWorker } from '../sw/register';
 import { LyricManager } from '../utils/lyric';
 import * as local from '../utils/api/local';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from 'element-plus/es/components/message/index';
 import { messageOption } from '../utils/utils';
 
 export class MusicConnection {
@@ -44,7 +44,9 @@ export class MusicConnection {
       this.config.platform = remoteConfig.platform || '';
     } catch {}
 
-    if (!this.config.remote) registerServiceWorker();
+    if (!this.config.remote) {
+      registerServiceWorker();
+    }
     this.config.remote && http.setRemoteMode(true);
     this.config.storage && storage.setRemoteMode(true);
     this.config.lyric && LyricManager.setRemoteMode(true);
@@ -53,11 +55,11 @@ export class MusicConnection {
     storages[StorageKey.ProxyAddress] &&
       http.setProxyAddress(storages[StorageKey.ProxyAddress]);
     const localProxy = http.getGlobalHttpProxy();
-    if (localProxy && !storages['http-proxy']) {
-      await storage.setValue('http-proxy', localProxy);
-      storages['http-proxy'] = localProxy;
-    } else if (storages['http-proxy']) {
-      http.setGlobalHttpProxy(storages['http-proxy']);
+    if (localProxy && !storages[StorageKey.HttpProxy]) {
+      await storage.setValue(StorageKey.HttpProxy, localProxy);
+      storages[StorageKey.HttpProxy] = localProxy;
+    } else if (storages[StorageKey.HttpProxy]) {
+      http.setGlobalHttpProxy(storages[StorageKey.HttpProxy]);
     }
     await this.play.initValue(this.config, storages);
     await this.setting.initValue(this.config, storages);

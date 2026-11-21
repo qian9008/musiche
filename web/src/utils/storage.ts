@@ -24,6 +24,8 @@ export enum StorageKey {
   DownloadQuality = 'download-quality',
   LyricOptions = 'lyric-options',
   ProxyAddress = 'proxy-address',
+  RoomServerAddress = 'room-server-address',
+  ParticleStageSettings = 'particle-stage-settings',
   Proxy = 'proxy',
   HttpProxy = 'http-proxy',
   LocalMusicSupplement = 'local-music-supplement'
@@ -77,7 +79,9 @@ async function getValue<T>(
   if (value) {
     try {
       result = JSON.parse(value as string);
-    } catch {}
+    } catch {
+      result = value;
+    }
   }
   if (defaultValue && (value == undefined || (type && typeof result !== type)))
     result = defaultValue;

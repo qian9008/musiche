@@ -4,12 +4,9 @@ export function getServiceWorkerRegistration(): ServiceWorkerRegistration | null
 }
 
 function sendMessageToServiceWorker(registration: ServiceWorkerRegistration) {
-  let proxyAddress = localStorage.getItem('musiche-proxy-address') || '';
-  if (proxyAddress.startsWith('"') && proxyAddress.endsWith('"')) {
-    try {
-      proxyAddress = JSON.parse(proxyAddress);
-    } catch {}
-  }
+  const proxyAddress =
+    localStorage.getItem('musiche-proxy-address')?.replace(/"/g, '').trim() ||
+    '';
   proxyAddress &&
     registration.active?.postMessage({
       type: 'MESSAGE_PROXY_ADDRESS',
@@ -45,6 +42,14 @@ async function unregisterOldServiceWorker(
 export async function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     try {
+      if (import.meta.env.DEV) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (let registration of registrations) {
+          await registration.unregister();
+        }
+        console.log('Service Worker unregistered in development mode.');
+        return;
+      }
       const workerName =
         (window as any).serviceWorkerJS || '/musiche.worker.js';
       if (await unregisterOldServiceWorker(workerName)) {

@@ -234,7 +234,10 @@ function scoreRemoteMusic(localMusic: Music, remoteMusic: Music) {
   tokens.forEach(token => {
     if (remoteText.includes(token)) tokenScore += 10;
   });
-  if (tokenScore === 0 && !localText.includes(normalizeName(remoteMusic.name))) {
+  if (
+    tokenScore === 0 &&
+    !localText.includes(normalizeName(remoteMusic.name))
+  ) {
     return -1;
   }
   let score = tokenScore;
@@ -335,4 +338,7 @@ export async function musicDetailWeb(music: Music): Promise<Music> {
     music.url = URL.createObjectURL(await fileHandler.getFile());
   }
   return music;
+}
+export function refreshCookie(cookies: string) {
+  return Promise.resolve(cookies);
 }

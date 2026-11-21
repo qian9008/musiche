@@ -75,11 +75,11 @@ async function cacheThenNetwork(request) {
     }
   }
   const cacheRouter =
-    response.headers.get('content-type')?.includes('text/html') &&
+    response?.headers?.get('content-type')?.includes('text/html') &&
     routerPattern.test(requestUrl);
   if (
     requestUrl.startsWith('http') &&
-    response.status === 200 &&
+    response?.status === 200 &&
     !networkFirst.test(requestUrl) &&
     (cacheRouter || (willCache && response.ok))
   ) {
@@ -113,7 +113,6 @@ self.addEventListener('update', event => {
 
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'MESSAGE_PROXY_ADDRESS') {
-    console.log('收到了！', event.data.payload);
     proxyAddress = event.data.payload || '';
     useHuaweiCloud = proxyAddress.includes('huawei');
   }

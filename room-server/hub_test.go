@@ -1,0 +1,204 @@
+package main
+
+import "testing"
+
+type recordingRoomEventSender struct {
+	events []Event
+}
+
+func (s *recordingRoomEventSender) Send(event Event) error {
+	s.events = append(s.events, event)
+	return nil
+}
+
+func (s *recordingRoomEventSender) Close() error { return nil }
+func (s *recordingRoomEventSender) Kind() string { return "test" }
+
+func TestSanitizeChatAvatar(t *testing.T) {
+	for _, avatar := range []string{"animal_38.jpg", "female_1.jpg", "male_29.jpg", "qq_3.jpg"} {
+		if got := sanitizeChatAvatar(avatar); got != avatar {
+			t.Fatalf("expected avatar %q, got %q", avatar, got)
+		}
+	}
+	for _, avatar := range []string{"male_30.jpg", "qq_4.jpg", "../male_1.jpg", "avatar.png"} {
+		if got := sanitizeChatAvatar(avatar); got != "" {
+			t.Fatalf("expected invalid avatar %q to be rejected, got %q", avatar, got)
+		}
+	}
+}
+
+func TestRandomQueueItemRemovesExactlyOneWaitingSong(t *testing.T) {
+	state := RoomState{Queue: []QueueItem{
+		{ID: "first"},
+		{ID: "second"},
+		{ID: "third"},
+	}}
+	selected := randomQueueItem(&state)
+	if selected == nil {
+		t.Fatal("expected a queue item")
+	}
+	if len(state.Queue) != 2 {
+		t.Fatalf("unexpected queue length: %d", len(state.Queue))
+	}
+	for _, item := range state.Queue {
+		if item.ID == selected.ID {
+			t.Fatalf("selected item %q was not removed", selected.ID)
+		}
+	}
+}
+
+func TestRandomQueueItemEmptyQueue(t *testing.T) {
+	if item := randomQueueItem(&RoomState{}); item != nil {
+		t.Fatalf("expected no item, got %#v", item)
+	}
+}
+
+func TestNextQueueItemUsesQueueOrderWhenRandomPlaybackDisabled(t *testing.T) {
+	state := RoomState{Queue: []QueueItem{{ID: "first"}, {ID: "second"}}}
+	next := nextQueueItem(&state)
+	if next == nil || next.ID != "first" {
+		t.Fatalf("expected first queued item, got %#v", next)
+	}
+	if len(state.Queue) != 1 || state.Queue[0].ID != "second" {
+		t.Fatalf("unexpected remaining queue: %#v", state.Queue)
+	}
+}
+
+func TestAdvanceQueueItemMovesCurrentIntoHistory(t *testing.T) {
+	state := RoomState{
+		Current: &QueueItem{ID: "playing"},
+		Queue:   []QueueItem{{ID: "next"}},
+	}
+	next := advanceQueueItem(&state, false)
+	if next == nil || next.ID != "next" {
+		t.Fatalf("expected next queued item, got %#v", next)
+	}
+	if len(state.History) != 1 || state.History[0].ID != "playing" {
+		t.Fatalf("current song was not added to history: %#v", state.History)
+	}
+}
+
+func TestAdvanceQueueItemLoopsCurrentToQueueTail(t *testing.T) {
+	state := RoomState{
+		Current: &QueueItem{ID: "playing"},
+		Queue:   []QueueItem{{ID: "next"}, {ID: "later"}},
+	}
+	next := advanceQueueItem(&state, true)
+	if next == nil || next.ID != "next" {
+		t.Fatalf("expected next queued item, got %#v", next)
+	}
+	if len(state.Queue) != 2 || state.Queue[0].ID != "later" || state.Queue[1].ID != "playing" {
+		t.Fatalf("played song was not moved to queue tail: %#v", state.Queue)
+	}
+	if len(state.History) != 1 || state.History[0].ID != "playing" {
+		t.Fatalf("current song was not added to history: %#v", state.History)
+	}
+}
+
+func TestAdvanceQueueItemLoopsOnlySong(t *testing.T) {
+	state := RoomState{Current: &QueueItem{ID: "playing"}}
+	next := advanceQueueItem(&state, true)
+	if next == nil || next.ID != "playing" || len(state.Queue) != 0 {
+		t.Fatalf("expected only song to restart, got next=%#v queue=%#v", next, state.Queue)
+	}
+}
+
+func TestTrackUnavailableSkipsOnlyNoRightCurrentSong(t *testing.T) {
+	room := &Room{
+		config: RoomConfig{ID: "ROOM1"},
+		state: RoomState{
+			Current: &QueueItem{ID: "blocked", Music: Music{}},
+			Queue:   []QueueItem{{ID: "playable"}},
+		},
+		connections: map[*RoomConnection]struct{}{},
+		path:        t.TempDir(),
+	}
+	connection := &RoomConnection{room: room}
+	if err := connection.handle(ClientCommand{Action: "track_unavailable", QueueID: "blocked", NoRight: true}); err != nil {
+		t.Fatalf("skip unavailable track: %v", err)
+	}
+	if room.state.Current == nil || room.state.Current.ID != "playable" || !room.state.Playback.Playing {
+		t.Fatalf("unexpected state after skip: %#v", room.state)
+	}
+	if len(room.state.Queue) != 0 {
+		t.Fatalf("unexpected queue after skip: %#v", room.state.Queue)
+	}
+	if len(room.state.History) != 0 {
+		t.Fatalf("unavailable song should not enter history: %#v", room.state.History)
+	}
+}
+
+func TestEncryptedRoomChatOnlyBroadcastsCiphertext(t *testing.T) {
+	memberID := "member-1"
+	recorder := &recordingRoomEventSender{}
+	room := &Room{
+		config: RoomConfig{
+			ID:            "ROOM1",
+			ChatEncrypted: true,
+			Members: map[string]Member{
+				memberID: {ID: memberID, Nickname: "测试成员"},
+			},
+		},
+		connections: map[*RoomConnection]struct{}{},
+		path:        t.TempDir(),
+	}
+	recipient := &RoomConnection{id: "recipient", sender: recorder, room: room, memberID: memberID}
+	room.connections[recipient] = struct{}{}
+	connection := &RoomConnection{
+		room:     room,
+		memberID: memberID,
+		store: &RoomStore{config: Config{
+			MaxChatMessageBytes:   600,
+			MaxChatImageBytes:     512 * 1024,
+			MaxEncryptedChatBytes: 1024 * 1024,
+		}},
+	}
+
+	if err := connection.handle(ClientCommand{Action: "chat", Content: "不应接受的明文"}); err == nil {
+		t.Fatal("encrypted room accepted plaintext chat")
+	}
+	encrypted := "v1.ABCDEFGHIJKLMNOP.ciphertext_123"
+	if err := connection.handle(ClientCommand{Action: "chat", Encrypted: encrypted, Avatar: "qq_1.jpg"}); err != nil {
+		t.Fatalf("encrypted chat failed: %v", err)
+	}
+	if len(recorder.events) != 1 || recorder.events[0].Type != "chat" {
+		t.Fatalf("unexpected encrypted chat events: %#v", recorder.events)
+	}
+	message, ok := recorder.events[0].Data.(ChatMessage)
+	if !ok || message.Encrypted != encrypted || message.Content != "" || message.Image != "" {
+		t.Fatalf("server exposed or changed encrypted payload: %#v", recorder.events[0].Data)
+	}
+}
+
+func TestRelayChatKeepsGuestProfileSeparateFromConnectionMember(t *testing.T) {
+	memberID := "member-1"
+	recorder := &recordingRoomEventSender{}
+	room := &Room{
+		config: RoomConfig{ID: "ROOM1", Members: map[string]Member{
+			memberID: {ID: memberID, Nickname: "分享者", Avatar: "qq_1.jpg"},
+		}},
+		connections: map[*RoomConnection]struct{}{},
+		path:        t.TempDir(),
+	}
+	recipient := &RoomConnection{id: "recipient", sender: recorder, room: room, memberID: memberID}
+	room.connections[recipient] = struct{}{}
+	connection := &RoomConnection{
+		room: room, memberID: memberID,
+		store: &RoomStore{config: Config{MaxChatMessageBytes: 600, MaxChatImageBytes: 512 * 1024}},
+	}
+
+	err := connection.handle(ClientCommand{
+		Action: "relay_chat", RelayID: "browser-guest", Nickname: "局域网访客",
+		Content: "你好", Avatar: "animal_1.jpg",
+	})
+	if err != nil {
+		t.Fatalf("relay chat failed: %v", err)
+	}
+	message, ok := recorder.events[0].Data.(ChatMessage)
+	if !ok || message.Nickname != "局域网访客" || message.Avatar != "animal_1.jpg" || message.Content != "你好" {
+		t.Fatalf("unexpected relay chat: %#v", recorder.events[0].Data)
+	}
+	if message.MemberID == memberID || message.MemberID == "" {
+		t.Fatalf("relay guest reused sharing member identity: %#v", message)
+	}
+}

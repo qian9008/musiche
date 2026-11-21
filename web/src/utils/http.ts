@@ -1,4 +1,5 @@
 import { AudioPlayer } from './audio';
+import { StorageKey } from './storage';
 import { ProxyRequestData } from './type';
 const history = `${
   import.meta.env.BASE_URL != '/' ? import.meta.env.BASE_URL : ''
@@ -7,17 +8,20 @@ const history = `${
 export const httpAddress = import.meta.env.DEV
   ? '127.0.0.1:54621'
   : location.host;
-
-let rawProxyAddress = localStorage.getItem('musiche-proxy-address') || '';
-if (rawProxyAddress.startsWith('"') && rawProxyAddress.endsWith('"')) {
-  try {
-    rawProxyAddress = JSON.parse(rawProxyAddress);
-  } catch {}
-}
-let proxyAddress = rawProxyAddress || `//${httpAddress}/proxy`;
+let proxyAddress =
+  localStorage
+    .getItem('musiche-' + StorageKey.ProxyAddress)
+    ?.replace(/"/g, '')
+    .trim() || `//${httpAddress}/proxy`;
 let useHuaweiCloud = proxyAddress.includes('huawei');
+let useLocalAudio = true;
 
-let globalHttpProxy = localStorage.getItem('musiche-http-proxy') || '';
+// 全局上游 HTTP 代理：歌词/第三方接口走此代理，缓存在 musiche-http-proxy
+// 注意：storage.setValue 写入的是 JSON 串（带双引号），这里必须剥掉引号，
+// 否则代理地址会变成 "\"http://x\"" 导致请求失败（历史踩坑点）
+let globalHttpProxy = (localStorage.getItem('musiche-http-proxy') || '')
+  .replace(/"/g, '')
+  .trim();
 export function setGlobalHttpProxy(proxy: string) {
   globalHttpProxy = proxy;
   localStorage.setItem('musiche-http-proxy', proxy);
@@ -25,9 +29,11 @@ export function setGlobalHttpProxy(proxy: string) {
 export function getGlobalHttpProxy() {
   return globalHttpProxy;
 }
-
-let useLocalAudio = true;
 var localAudio: AudioPlayer | null = null;
+
+export function getLocalAudioElement() {
+  return localAudio?.audio || null;
+}
 
 export function setRemoteMode(remote: boolean) {
   useLocalAudio = !remote;

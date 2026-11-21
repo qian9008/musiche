@@ -1,9 +1,9 @@
 <script lang="ts" setup>
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage } from 'element-plus/es/components/message/index';
+import { ElMessageBox } from 'element-plus/es/components/message-box/index';
 import { Ref, h, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { WarningFilled, PictureFilled } from '@element-plus/icons-vue';
-import QRCode from 'qrcode';
 
 import Login from '../components/Login.vue';
 import LoginSyncScanner from '../components/LoginSyncScanner.vue';
@@ -20,6 +20,10 @@ import {
   getGlobalHttpProxy,
   setGlobalHttpProxy
 } from '../utils/http';
+import {
+  getRoomServerAddress,
+  setRoomServerAddress
+} from '../utils/room-config';
 import { musicTypeInfo, musicTypeInfoAll } from '../utils/platform';
 import {
   AppTheme,
@@ -167,6 +171,8 @@ const defaultFonts = isWindows
 const defaultProxyAddress = ref(getProxyAddress());
 const defaultProxyAddressReadonly = ref(true);
 const defaultHttpProxy = ref(getGlobalHttpProxy());
+const roomServerAddress = ref(getRoomServerAddress());
+const roomServerAddressReadonly = ref(true);
 const useHuaweiCloud = ref(isHuaweiCloud());
 const setting = useSettingStore();
 const play = usePlayStore();
@@ -200,6 +206,11 @@ const themes = ref([
     id: 'dark',
     name: '深色',
     color: '#13131a'
+  },
+  {
+    id: 'glass',
+    name: '玻璃',
+    color: 'linear-gradient(135deg, #dbe7f2 0%, #c9d9e9 48%, #e4dff1 100%)'
   },
   setting.customTheme,
   {
@@ -475,6 +486,7 @@ async function showLoginSyncQRCode(type: MusicType) {
     ElMessage.warning(`当前没有可同步的${musicTypeInfo[type].name}登录信息`);
     return;
   }
+  const QRCode = (await import('qrcode')).default;
   loginSyncQrCode.value = await QRCode.toDataURL(
     JSON.stringify({
       type: 'musiche-login-sync',
@@ -638,7 +650,7 @@ function onProxyAddressChanged(value: string) {
 function onHttpProxyChanged(value: string) {
   const trimmed = value.trim();
   setGlobalHttpProxy(trimmed);
-  storage.setValue('http-proxy', trimmed);
+  storage.setValue(StorageKey.HttpProxy, trimmed);
 }
 
 const testingProxy = ref(false);
@@ -648,7 +660,7 @@ const proxyTestSuccess = ref(false);
 async function testHttpProxy() {
   const trimmed = defaultHttpProxy.value.trim();
   setGlobalHttpProxy(trimmed);
-  await storage.setValue('http-proxy', trimmed);
+  await storage.setValue(StorageKey.HttpProxy, trimmed);
 
   testingProxy.value = true;
   proxyTestResult.value = '正在测试连接...';
@@ -667,6 +679,25 @@ async function testHttpProxy() {
     proxyTestResult.value = `测试接口连接失败: ${err}`;
   } finally {
     testingProxy.value = false;
+  }
+}
+
+async function refreshRoomAvailability() {
+  const { useRoomStore } = await import('../stores/room');
+  useRoomStore().checkAvailability();
+}
+
+function onRoomServerAddressChanged(value: string) {
+  if (!value || value.startsWith(location.origin)) {
+    setRoomServerAddress('');
+    roomServerAddress.value = getRoomServerAddress();
+    void refreshRoomAvailability();
+    return;
+  }
+  if (value.startsWith('http://') || value.startsWith('https://')) {
+    setRoomServerAddress(value);
+    roomServerAddress.value = getRoomServerAddress();
+    void refreshRoomAvailability();
   }
 }
 
@@ -693,7 +724,7 @@ function setAppTheme(theme: AppTheme) {
   cancelAutoAppTheme();
   setting.setAppTheme(theme);
 }
-var observer = null;
+var observer: IntersectionObserver | null = null;
 const viewElements: {
   id: string;
   visible: boolean;
@@ -753,7 +784,10 @@ onMounted(() => {
       });
   });
 });
-onUnmounted(unWatch);
+onUnmounted(() => {
+  unWatch();
+  observer?.disconnect();
+});
 </script>
 <template>
   <AnimalPage>
@@ -967,10 +1001,22 @@ onUnmounted(unWatch);
                 </el-checkbox>
                 <span style="font-weight: bold; margin-top: 10px; display: block;">代理地址 (ProxyServer)</span>
                 <el-input
+                  v-if="isWindows || !setting.config.remote"
                   v-model="defaultProxyAddress"
                   :readonly="defaultProxyAddressReadonly"
                   @dblclick="defaultProxyAddressReadonly = false"
                   @change="onProxyAddressChanged"
+                  :title="defaultProxyAddressReadonly ? '双击修改' : void 0"
+                  style="padding: 10px 50px 0 0" />
+                <span style="font-weight: bold; margin-top: 10px"
+                  >歌房服务地址</span
+                >
+                <el-input
+                  v-model="roomServerAddress"
+                  :readonly="roomServerAddressReadonly"
+                  @dblclick="roomServerAddressReadonly = false"
+                  @change="onRoomServerAddressChanged"
+                  :title="roomServerAddressReadonly ? '双击修改' : void 0"
                   style="padding: 10px 50px 0 0" />
                 <span style="font-weight: bold; margin-top: 10px; display: block;">http解锁服务器</span>
                 <el-input
