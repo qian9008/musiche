@@ -103,7 +103,8 @@ jobs:
         shell: bash
         run: |
           rm -rf mobile/assets || true
-          cp -r web/dist/* mobile/assets/ || true
+          mkdir -p mobile/assets
+          cp -r web/dist/* mobile/assets/
 
       - name: Build Android package
         run: |
