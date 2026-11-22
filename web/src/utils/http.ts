@@ -185,6 +185,7 @@ type CommunicationData = Parameters<WebSocket['send']>[0];
 export interface CommunicationClient {
   readyState: number;
   send: (data: CommunicationData) => void;
+  close?: () => void;
 }
 
 export function wsClient(
@@ -238,6 +239,8 @@ export function wsClient(
     get readyState() {
       return socket.readyState;
     },
-    send: (data: CommunicationData) => socket.send(data)
+    send: (data: CommunicationData) => socket.send(data),
+    // 供上层做握手超时/主动断开；不暴露 socket 本体，避免调用方绕过封装
+    close: () => socket.close()
   };
 }

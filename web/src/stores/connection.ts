@@ -11,6 +11,14 @@ import { messageOption } from '../utils/utils';
 
 export class MusicConnection {
   webSocketClient?: http.CommunicationClient;
+  // WebSocket 重连退避：1s → 2s → 4s → 8s → 16s → 30s（上限），并附带 ±20% 抖动
+  private wsRetryTimes = 0;
+  private wsRetryTimer?: number;
+  private wsConnectTimer?: number;
+  private wsConnecting = false;
+  private static readonly WsRetryBase = 1000;
+  private static readonly WsRetryMax = 30000;
+  private static readonly WsConnectTimeout = 8000;
   play = usePlayStore();
   setting = useSettingStore();
   public config: Config = {
@@ -27,6 +35,14 @@ export class MusicConnection {
   constructor() {
     this.init();
     this.registerShortcut();
+    // 标签页切回前台时立即补连，避免后台定时器节流导致最长要等 30s 才恢复
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (this.wsConnecting) return;
+      if (this.webSocketClient?.readyState === WebSocket.OPEN) return;
+      this.wsRetryTimes = 0;
+      this.connectWebSocket();
+    });
   }
 
   async init() {
@@ -66,10 +82,7 @@ export class MusicConnection {
     await import('../style/main.css');
     document.documentElement.style.opacity = '1';
     console.log('musiche loaded');
-    this.webSocketClient = http.wsClient(
-      this.wsMessage.bind(this),
-      this.wsClose.bind(this)
-    );
+    this.connectWebSocket();
     if (this.setting.pageValue.savePlayProgress) {
       try {
         const progress = parseInt(
@@ -233,12 +246,65 @@ export class MusicConnection {
       }
     } catch {}
   }
+  wsOpen() {
+    this.wsConnecting = false;
+    if (this.wsConnectTimer) {
+      clearTimeout(this.wsConnectTimer);
+      this.wsConnectTimer = undefined;
+    }
+    if (this.wsRetryTimes > 0) {
+      console.log(`WebSocket reconnected after ${this.wsRetryTimes} attempt(s)`);
+    }
+    this.wsRetryTimes = 0;
+    // 重连后主动对一次状态：服务端握手时也会推一次，这里兜住错过的几秒
+    this.sendWsStatus();
+  }
+
   wsClose() {
-    setTimeout(() => {
-      this.webSocketClient = http.wsClient(
-        this.wsMessage.bind(this),
-        this.wsClose.bind(this)
-      );
-    }, 1000);
+    this.wsConnecting = false;
+    if (this.wsConnectTimer) {
+      clearTimeout(this.wsConnectTimer);
+      this.wsConnectTimer = undefined;
+    }
+    // 已有待执行的重连任务时直接返回，避免 close 重复触发导致定时器叠加、重连风暴
+    if (this.wsRetryTimer) return;
+    const base = Math.min(
+      MusicConnection.WsRetryBase * Math.pow(2, this.wsRetryTimes),
+      MusicConnection.WsRetryMax
+    );
+    // 抖动 ±20%：多标签页/多设备同时掉线时不会在同一毫秒一起重连
+    const delay = Math.round(base * (0.8 + Math.random() * 0.4));
+    this.wsRetryTimes++;
+    console.log(`WebSocket closed, retry #${this.wsRetryTimes} in ${delay}ms`);
+    this.wsRetryTimer = window.setTimeout(() => {
+      this.wsRetryTimer = undefined;
+      this.connectWebSocket();
+    }, delay);
+  }
+
+  private connectWebSocket() {
+    if (this.wsRetryTimer) {
+      clearTimeout(this.wsRetryTimer);
+      this.wsRetryTimer = undefined;
+    }
+    if (this.wsConnectTimer) {
+      clearTimeout(this.wsConnectTimer);
+      this.wsConnectTimer = undefined;
+    }
+    this.wsConnecting = true;
+    this.webSocketClient = http.wsClient(
+      this.wsMessage.bind(this),
+      this.wsClose.bind(this),
+      this.wsOpen.bind(this)
+    );
+    // 握手超时：设备休眠 / AP 隔离时浏览器 TCP 可能长时间不报错，主动断开交给退避重连
+    this.wsConnectTimer = window.setTimeout(() => {
+      this.wsConnectTimer = undefined;
+      if (this.wsConnecting) this.webSocketClient?.close?.();
+    }, MusicConnection.WsConnectTimeout);
+    // 本地播放模式（无真实 WebSocket）不会收到 open/close，直接复位
+    if (this.webSocketClient.readyState === WebSocket.CLOSED) {
+      this.wsConnecting = false;
+    }
   }
 }
