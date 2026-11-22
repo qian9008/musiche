@@ -16,6 +16,9 @@ export class MusicConnection {
   private wsRetryTimer?: number;
   private wsConnectTimer?: number;
   private wsConnecting = false;
+  // 每次连接分配一个自增 id：旧连接迟到的 open/close/message 事件一律忽略，
+  // 否则超时放弃后的旧 socket 关闭会再触发一次重连，形成连接叠加
+  private wsSocketId = 0;
   private static readonly WsRetryBase = 1000;
   private static readonly WsRetryMax = 30000;
   private static readonly WsConnectTimeout = 8000;
@@ -291,16 +294,30 @@ export class MusicConnection {
       clearTimeout(this.wsConnectTimer);
       this.wsConnectTimer = undefined;
     }
+    // 放弃上一条连接（可能还在握手中），其后续事件由下面的 id 校验过滤
+    this.webSocketClient?.close?.();
+    const id = ++this.wsSocketId;
     this.wsConnecting = true;
     this.webSocketClient = http.wsClient(
-      this.wsMessage.bind(this),
-      this.wsClose.bind(this),
-      this.wsOpen.bind(this)
+      message => {
+        if (id !== this.wsSocketId) return;
+        this.wsMessage(message);
+      },
+      () => {
+        if (id !== this.wsSocketId) return;
+        this.wsClose();
+      },
+      () => {
+        if (id !== this.wsSocketId) return;
+        this.wsOpen();
+      }
     );
     // 握手超时：设备休眠 / AP 隔离时浏览器 TCP 可能长时间不报错，主动断开交给退避重连
     this.wsConnectTimer = window.setTimeout(() => {
       this.wsConnectTimer = undefined;
-      if (this.wsConnecting) this.webSocketClient?.close?.();
+      if (id === this.wsSocketId && this.wsConnecting) {
+        this.webSocketClient?.close?.();
+      }
     }, MusicConnection.WsConnectTimeout);
     // 本地播放模式（无真实 WebSocket）不会收到 open/close，直接复位
     if (this.webSocketClient.readyState === WebSocket.CLOSED) {
