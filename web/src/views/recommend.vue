@@ -8,6 +8,7 @@ import PlaylistEle from '../components/Playlist.vue';
 import AnimalPage from '../components/AnimalPage.vue';
 import { useSettingStore } from '../stores/setting';
 import { musicTypeAll } from '../utils/platform';
+import { storage, StorageKey } from '../utils/storage';
 const { currentRoute, replace } = useRouter();
 const setting = useSettingStore();
 const playlist: Ref<Playlist[]> = ref([]);
@@ -51,6 +52,15 @@ async function prepareRouter(key: string, type: MusicType) {
   }
   return false;
 }
+// 歌单秒开：首次加载时先显示上次缓存的歌单，后台再拉新数据无感替换。
+// 设计要点：
+// - 缓存只存首页(offset=0)，滚动分页(offset>0)不读缓存、不重写。
+// - 秒开只在首次进入时启用，此时用户尚未滚动，替换列表不会冲突。
+// - 后台拉新成功后才更新缓存，失败时保留旧缓存不报错。
+function playlistCacheKey(key: string, type: MusicType): string {
+  return `${StorageKey.PlaylistCache}:${key}:${type}`;
+}
+
 async function getPlaylist(clear: boolean = true) {
   if (loading.value) return;
   await setting.waitLoaded();
@@ -59,22 +69,45 @@ async function getPlaylist(clear: boolean = true) {
   if (await prepareRouter(key, type)) {
     return;
   }
+  const cacheKey = playlistCacheKey(key, type);
+  // 首页加载：先用缓存秒开显示，loading 不挡列表
+  if (clear) {
+    try {
+      const cached = await storage.getValue<Playlist[]>(cacheKey, []);
+      if (cached && cached.length) {
+        playlist.value.splice(0, playlist.value.length, ...cached);
+        // 用缓存条数维持滚动分页可继续，待真实数据到齐后修正
+        total = cached.length;
+      }
+    } catch {}
+  }
   loading.value = true;
-  clear && playlist.value.splice(0, playlist.value.length);
+  // 分页加载(offset>0)不清空列表；首页仅在无缓存可显示时清空
+  clear && !playlist.value.length && playlist.value.splice(0, playlist.value.length);
   setting.currentMusicType = type as MusicType;
   setting.currentMusicTypeShow = true;
-  loading.value = true;
   let result = null;
+  // 首页从 offset=0 拉；分页从当前列表长度继续往后拉
+  const offset = clear ? 0 : playlist.value.length;
   if (key === 'yours') {
-    result = await api.yours(setting.currentMusicType, playlist.value.length);
+    result = await api.yours(setting.currentMusicType, offset);
   } else {
-    result = await api.recommend(
-      setting.currentMusicType,
-      playlist.value.length
-    );
+    result = await api.recommend(setting.currentMusicType, offset);
   }
-  total = result.total;
-  result.list.map((m: Playlist) => playlist.value.push(m));
+  if (clear) {
+    // 首页新数据到齐：整体替换列表，并更新缓存
+    playlist.value.splice(0, playlist.value.length, ...result.list);
+    total = result.total;
+    if (result.list.length) {
+      try {
+        await storage.setValue(cacheKey, result.list);
+      } catch {}
+    }
+  } else {
+    // 分页：追加到列表尾部
+    result.list.map((m: Playlist) => playlist.value.push(m));
+    total = result.total;
+  }
   loading.value = false;
   if (await needContinueLoading()) getPlaylist(false);
 }

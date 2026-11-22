@@ -28,7 +28,9 @@ export enum StorageKey {
   ParticleStageSettings = 'particle-stage-settings',
   Proxy = 'proxy',
   HttpProxy = 'http-proxy',
-  LocalMusicSupplement = 'local-music-supplement'
+  LocalMusicSupplement = 'local-music-supplement',
+  // 歌单秒开缓存：存入上次拉到的歌单首页，进入页面时秒开显示
+  PlaylistCache = 'playlist-cache'
 }
 
 function setRemoteMode(remote: boolean) {
