@@ -196,13 +196,27 @@ export async function loginStatus(
   return { status: 'fail' };
 }
 
+// 账号信息校验缓存：进入「我的音乐」会重复打平台接口（如网易云 nuser/account/get）。
+// 同一 cookie 在 TTL 内复用结果；cookie 变化则 key 变化重新校验。
+const userInfoCache = new Map<string, { time: number; value: UserInfo }>();
+const USER_INFO_TTL = 5 * 60 * 1000;
+
 export async function userInfo(
   type: MusicType,
   cookie: Record<string, string> | string
 ): Promise<UserInfo | null> {
+  const cookieKey = typeof cookie === 'string' ? cookie : JSON.stringify(cookie);
+  const cacheKey = type + ':' + cookieKey;
+  const cached = userInfoCache.get(cacheKey);
+  if (cached && Date.now() - cached.time < USER_INFO_TTL) return cached.value;
   const func = musicAPI.get(type)?.userInfo;
   try {
-    if (func) return await func(cookie);
+    if (func) {
+      const result = await func(cookie);
+      // 只缓存成功结果；失败时下次进页仍会重新校验并重置登录
+      if (result) userInfoCache.set(cacheKey, { time: Date.now(), value: result });
+      return result;
+    }
   } catch (e) {
     console.error(e);
   }
